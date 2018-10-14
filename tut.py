@@ -31,8 +31,8 @@ def image_loader(image_name):
     return image.to(device, torch.float)
 
 
-style_img = image_loader("./images/dem.jpg")
-content_img = image_loader("./images/dan.jpg")
+style_img = image_loader("./images/picasso.jpg")
+content_img = image_loader("./images/dancing.jpg")
 
 assert style_img.size() == content_img.size(), \
     "we need to import style and content images of the same size"
@@ -165,6 +165,7 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
             raise RuntimeError('Unrecognized layer: {}'.format(layer.__class__.__name__))
 
         model.add_module(name, layer)
+        print(name)
 
         if name in content_layers:
             # add content loss:
