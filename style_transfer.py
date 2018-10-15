@@ -1,3 +1,36 @@
+"""
+
+ARCHITECTURE:
+
+1: Stylizing Network
+custom cnn (nn.sequential)
+input - frame 1, frame 2
+backprop - gradients from hybrid loss
+output - stylized frame 1, stylized frame 2
+
+2: Temporal Loss
+a nn.module?
+input - stylized frame 1, stylized frame 2
+Deepflow function - mse between frame 1 (warped by optical flow) and frame 2
+output - a value
+
+3: Spatial Loss 2x
+VGG 19 CNN (nn.sequential)
+input 1 - stylized frame 1, content frame 1, style image
+output 1 - a value
+input 2 -  stylized frame 2, content frame 2, style image
+output 2 - a value
+
+4: hybrid loss
+a nn.module?
+input - spatial loss, temporal loss
+output - a value
+gradients used for stylizing network
+
+"""
+
+
+
 from __future__ import print_function
 
 import torch
@@ -87,17 +120,16 @@ def run_style_transfer(cnn, normalization_mean, normalization_std,
             input_img.data.clamp_(0, 1)
 
             optimizer.zero_grad()
-            model(input_img)
+            model(input_img) #input_img is modified in place
             style_score = 0
             content_score = 0
-            temporal_score = 0
 
             for sl in style_losses:
                 style_score += sl.loss
             for cl in content_losses:
                 content_score += cl.loss
-            for tl in temporal_losses:
-                temporal_score += tl.loss
+
+            temporal_score = calculate_temporal_loss(input_img, content_img)
 
             style_score *= style_weight
             content_score *= content_weight
