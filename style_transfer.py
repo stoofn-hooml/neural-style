@@ -46,7 +46,7 @@ import copy
 
 # our imports
 from stylization_network import StylizationNetwork
-from hybrid_loss_network import get_loss_network
+from hybrid_loss_network import get_spatial_loss_network, TemporalLoss, TVLoss
 from dataset import get_loader
 from opticalflow import opticalflow
 
@@ -93,10 +93,6 @@ imshow(style_img, title='Style Image')
 # imshow(content_img, title='Content Image')
 
 
-# generated = content_img.clone()
-# if you want to use white noise instead uncomment the below line:
-# generated = torch.randn(content_img.data.size(), device=device)
-
 # add the original input image to the figure:
 # plt.figure()
 # imshow(generated, title='Input Image')
@@ -108,19 +104,36 @@ def get_input_optimizer(stylization_network):
     optimizer = optim.LBFGS(stylization_network.parameters())
     return optimizer
 
+# hyperperameter defaults (specified in section 4.1)
+default_content_weight = 1
+default_style_weight = 10
+default_temporal_weight = 10000
+default_variation_weight = .001
 
 def run_style_transfer(cnn, normalization_mean, normalization_std,
                        style_img, num_steps=300,
-                       style_weight=1000000, content_weight=1):
+                       style_weight=default_style_weight,
+                       content_weight=default_content_weight,
+                       temporal_weight=default_temporal_weight
+                       variation_weight=default_variation_weight):
     """Run the style transfer."""
     print('Building the style transfer model..')
 
+    # initialize starting values/networks
+
+    # generated = content_img.clone()
+    # if you want to use white noise instead uncomment the below line:
+    # generated = torch.randn(content_img.data.size(), device=device)
+
     stylization_network = StylizationNetwork()
 
-    get_spatial_loss_network, style_losses, content_losses = get_spatial_loss_network(style_img, cnn,
-        normalization_mean, normalization_std)
+    spatial_loss_network, style_losses, content_losses = get_spatial_loss_network(style_img)
 
-    optimizer = get_input_optimizer(stylization_network)
+    tv = TVLoss() #TODO: initialize TV with generated frame
+
+    temporal_loss = TemporalLoss()
+
+    optimizer = get_input_optimizer(stylization_network) # TODO: Replace with ADAM (see section 4.1)
 
     print('Optimizing..')
     run = [0]
@@ -130,15 +143,15 @@ def run_style_transfer(cnn, normalization_mean, normalization_std,
     while run[0] <= num_steps:
         # loader is an iterator so it must be accessed with enumerate()
         # each element of enumerate(loader) is a list of frames (a video)
-        for _, frames in enumerate(loader):
+        for unused, frames in enumerate(loader):
             # loop through all the frames for each video
             for i in range(1, len(frames)):
                 def closure():
                     content_t = frames[i];      # current frame
                     content_t1 = frames[i-1];   # previous frame
 
-                    generated_t = stylizationNetwork(content_t)
-                    generated_t1 = stylizationNetwork(content_t1)
+                    generated_t = stylization_network(content_t)
+                    generated_t1 = stylization_network(content_t1)
 
                     # correct the values of updated input image
                     # generated.data.clamp_(0, 1)
@@ -147,50 +160,61 @@ def run_style_transfer(cnn, normalization_mean, normalization_std,
                     optimizer.zero_grad()
 
 
-                    # calculate losses for content_t
-                    spatial_loss_network(generated_t, content_t) #generated is modified in place
-                    style_score_t = 0
-                    content_score_t = 0
+                    # calculate style/content loss for current frame (content_t)
+                    spatial_loss_network(content_t, generated_t) #generated is modified in place
+                    style_loss_t = 0
+                    content_loss_t = 0
 
                     for sl in style_losses:
-                        style_score_t += sl.loss
+                        style_loss_t += sl.loss
                     for cl in content_losses:
-                        content_score_t += cl.loss
+                        content_loss_t += cl.loss
 
 
-                    # calculate losses for content_t1
-                    spatial_loss_network(generated_t1, content_t1)
-                    style_score_t1 = 0
-                    content_score_t1 = 0
+                    # calculate style/content loss for previous frame (content_t1)
+                    spatial_loss_network(content_t1, generated_t1)
+                    style_loss_t1 = 0
+                    content_loss_t1 = 0
 
                     for sl in style_losses:
-                        style_score_t1 += sl.loss
+                        style_loss_t1 += sl.loss
                     for cl in content_losses:
-                        content_score_t1 += cl.loss
+                        content_loss_t1 += cl.loss
 
-                    total_style_score = style_score_t + style_score_t1
-                    total_style_score *= style_weight
+                    # total style loss (section 3.2.1)
+                    total_style_loss = style_loss_t + style_loss_t1
+                    total_style_loss *= style_weight
 
-                    total_content_score = content_score_t + content_score_t1
-                    total_content_score *= content_weight
+                    # total content loss (section 3.2.1)
+                    total_content_loss = content_loss_t + content_loss_t1
+                    total_content_loss *= content_weight
 
-                    # Optical flow
-                    flow, mask = opticalflow(generated_t.data.numpy(), generated_t1.data.numpy())
+                    # regularization (TV Regularizer, section 3.2.1)
+                    tv_loss = tv(generated_t)
+                    tv_loss *= variation_weight
 
-                    temporal_score = TemporalLoss(generated_t, flow, mask)
-                    temporal_score *= temporal_weight
+                    # final spatial loss
+                    spatial_loss = total_style_loss + total_content_loss + tv_loss
 
-                    loss = total_style_score + total_content_score + temporal_score
-                    loss.backward()
+                    # Optical flow (Temporal Loss, section 3.2.2)
+                    flow_t1, mask = opticalflow(generated_t.data.numpy(), generated_t1.data.numpy())
+
+                    temporal_loss = temporal_loss(generated_t, flow_t1, mask)
+                    temporal_loss *= temporal_weight
+
+                    # Hybrid loss and backprop
+                    hybrid_loss = spatial_loss + temporal_loss
+                    hybrid_loss.backward()
 
                     run[0] += 1
                     if run[0] % 50 == 0:
                         print("run {}:".format(run))
-                        print('Style Loss : {:4f} Content Loss: {:4f}'.format(
-                            style_score.item(), content_score.item()))
+                        print('Style Loss : {:4f} Content Loss: {:4f} Temporal Loss: {:4f}'.format(
+                            total_style_loss.item(), total_content_loss.item(), temporal_loss.item()))
                         print()
 
-                    return style_score + content_score
+                    # return style_loss + content_loss #old final loss
+                    return spatial_loss + temporal_loss # backpropogated hybrid loss
 
                 optimizer.step(closure)
 
