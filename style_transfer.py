@@ -29,8 +29,6 @@ gradients used for stylizing network
 
 """
 
-
-
 from __future__ import print_function
 
 import torch
@@ -45,6 +43,12 @@ import torchvision.transforms as transforms
 import torchvision.models as models
 
 import copy
+
+# our imports
+from stylization_network import StylizationNetwork
+from hybrid_loss_network import get_loss_network
+from dataset import get_loader
+from opticalflow import opticalflow
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -63,7 +67,8 @@ def image_loader(image_name):
 
 
 style_img = image_loader("./images/picasso.jpg")
-content_img = image_loader("./images/dancing.jpg")
+# content_img = image_loader("./images/dancing.jpg")
+
 assert style_img.size() == content_img.size(), \
     "we need to import style and content images of the same size"
 
@@ -84,79 +89,119 @@ def imshow(tensor, title=None):
 plt.figure()
 imshow(style_img, title='Style Image')
 
-plt.figure()
-imshow(content_img, title='Content Image')
+# plt.figure()
+# imshow(content_img, title='Content Image')
 
 
-input_img = content_img.clone()
+# generated = content_img.clone()
 # if you want to use white noise instead uncomment the below line:
-# input_img = torch.randn(content_img.data.size(), device=device)
+# generated = torch.randn(content_img.data.size(), device=device)
 
 # add the original input image to the figure:
-plt.figure()
-imshow(input_img, title='Input Image')
+# plt.figure()
+# imshow(generated, title='Input Image')
 
-def get_input_optimizer(input_img):
+def get_input_optimizer(stylization_network):
     # this line to show that input is a parameter that requires a gradient
-    optimizer = optim.LBFGS([input_img.requires_grad_()])
+
+    # Adam???
+    optimizer = optim.LBFGS(stylization_network.parameters())
     return optimizer
 
 
 def run_style_transfer(cnn, normalization_mean, normalization_std,
-                       content_img, style_img, input_img, num_steps=300,
+                       style_img, num_steps=300,
                        style_weight=1000000, content_weight=1):
     """Run the style transfer."""
     print('Building the style transfer model..')
-    model, style_losses, content_losses = get_style_model_and_losses(cnn,
-        normalization_mean, normalization_std, style_img, content_img)
-    optimizer = get_input_optimizer(input_img)
+
+    stylization_network = StylizationNetwork()
+
+    get_spatial_loss_network, style_losses, content_losses = get_spatial_loss_network(style_img, cnn,
+        normalization_mean, normalization_std)
+
+    optimizer = get_input_optimizer(stylization_network)
 
     print('Optimizing..')
     run = [0]
+
+    # get loader of video
+
     while run[0] <= num_steps:
+        # loader is an iterator so it must be accessed with enumerate()
+        # each element of enumerate(loader) is a list of frames (a video)
+        for _, frames in enumerate(loader):
+            # loop through all the frames for each video
+            for i in range(1, len(frames)):
+                def closure():
+                    content_t = frames[i];      # current frame
+                    content_t1 = frames[i-1];   # previous frame
 
-        def closure():
-            # correct the values of updated input image
-            input_img.data.clamp_(0, 1)
+                    generated_t = stylizationNetwork(content_t)
+                    generated_t1 = stylizationNetwork(content_t1)
 
-            optimizer.zero_grad()
-            model(input_img) #input_img is modified in place
-            style_score = 0
-            content_score = 0
+                    # correct the values of updated input image
+                    # generated.data.clamp_(0, 1)
 
-            for sl in style_losses:
-                style_score += sl.loss
-            for cl in content_losses:
-                content_score += cl.loss
+                    # clears gradients for each iteration of backprop
+                    optimizer.zero_grad()
 
-            temporal_score = calculate_temporal_loss(input_img, content_img)
 
-            style_score *= style_weight
-            content_score *= content_weight
-            temporal_score *= temporal_weight
+                    # calculate losses for content_t
+                    spatial_loss_network(generated_t, content_t) #generated is modified in place
+                    style_score_t = 0
+                    content_score_t = 0
 
-            loss = style_score + content_score
-            loss.backward()
+                    for sl in style_losses:
+                        style_score_t += sl.loss
+                    for cl in content_losses:
+                        content_score_t += cl.loss
 
-            run[0] += 1
-            if run[0] % 50 == 0:
-                print("run {}:".format(run))
-                print('Style Loss : {:4f} Content Loss: {:4f}'.format(
-                    style_score.item(), content_score.item()))
-                print()
 
-            return style_score + content_score
+                    # calculate losses for content_t1
+                    spatial_loss_network(generated_t1, content_t1)
+                    style_score_t1 = 0
+                    content_score_t1 = 0
 
-        optimizer.step(closure)
+                    for sl in style_losses:
+                        style_score_t1 += sl.loss
+                    for cl in content_losses:
+                        content_score_t1 += cl.loss
 
-    # a last correction...
-    input_img.data.clamp_(0, 1)
+                    total_style_score = style_score_t + style_score_t1
+                    total_style_score *= style_weight
 
-    return input_img
+                    total_content_score = content_score_t + content_score_t1
+                    total_content_score *= content_weight
+
+                    # Optical flow
+                    flow, mask = opticalflow(generated_t.data.numpy(), generated_t1.data.numpy())
+
+                    temporal_score = TemporalLoss(generated_t, flow, mask)
+                    temporal_score *= temporal_weight
+
+                    loss = total_style_score + total_content_score + temporal_score
+                    loss.backward()
+
+                    run[0] += 1
+                    if run[0] % 50 == 0:
+                        print("run {}:".format(run))
+                        print('Style Loss : {:4f} Content Loss: {:4f}'.format(
+                            style_score.item(), content_score.item()))
+                        print()
+
+                    return style_score + content_score
+
+                optimizer.step(closure)
+
+        # a last correction...
+        generated.data.clamp_(0, 1)
+
+        return generated
 
 
 output = run_style_transfer(cnn, cnn_normalization_mean, cnn_normalization_std,
-                            content_img, style_img, input_img, 300, 1000000, 1)
+                            content_img, style_img, generated, 300, 1000000, 1)
 
 plt.figure()
 imshow(output, title='Output Image')

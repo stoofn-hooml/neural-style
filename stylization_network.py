@@ -13,46 +13,42 @@ import torchvision.models as models
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+def conv_block(in_channels, out_channels, kernel_size, stride, activation, transpose=False):
+    if activation == 'ReLu':
+        act = nn.Relu()
+    elif activation == 'Tanh':
+        act = nn.Tanh()
 
-class StylizationNetwork(nn.Module):
-    """docstring."""
-
-    def conv_block(in_channels, out_channels, kernel_size, stride, activation, transpose=False):
-        if activation == 'ReLu':
-            act = nn.Relu()
-        elif activation == 'Tanh':
-            act = nn.Tanh()
-
-        if activation == '':
-            return nn.sequential(
-                nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride),
-                nn.InstanceNorm2d(out_channels)
-            )
-        elif transpose: #for deconvolution blocks
-            return nn.sequential(
-                nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride),
-                nn.InstanceNorm2d(out_channels), # ???
-                act
-            )
-        else: #for cnormal onvolution blocks
-            return nn.sequential(
-                nn.conv2d(in_channels, out_channels, kernel_size, stride),
-                nn.InstanceNorm2d(out_channels), # ???
-                act
-            )
-
-    def res_block(in_channels, out_channels, kernel_size, stride):
+    if activation == '':
         return nn.sequential(
-            conv_block(in_channels, out_channels, kernel_size, stride, 'ReLu'),
-            conv_block(in_channels, out_channels, kernel_size, stride, '')
+            nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride),
+            nn.InstanceNorm2d(out_channels)
+        )
+    elif transpose: #for deconvolution blocks
+        return nn.sequential(
+            nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride),
+            nn.InstanceNorm2d(out_channels), # ???
+            act
+        )
+    else: #for normal onvolution blocks
+        return nn.sequential(
+            nn.conv2d(in_channels, out_channels, kernel_size, stride),
+            nn.InstanceNorm2d(out_channels), # ???
+            act
         )
 
+def res_block(in_channels, out_channels, kernel_size, stride):
+    return nn.sequential(
+        conv_block(in_channels, out_channels, kernel_size, stride, 'ReLu'),
+        conv_block(in_channels, out_channels, kernel_size, stride, '')
+    )
+
+
+class StylizationNetwork(nn.Module):
+    """Custom Stylization network as specified by Huang section 3.1"""
 
     def __init__(self):
-        """docstring."""
         super(StylizationNetwork, self).__init__()
-
-        #  architecture as specified in Huang paper section 3.1
 
         #  (in_channels, out_channels, kernel_size (filter), stride)
         self.conv_block_1 = conv_block(3, 16, 3, 1, 'Relu')

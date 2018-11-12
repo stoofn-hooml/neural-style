@@ -13,20 +13,21 @@ import torchvision.models as models
 
 import copy
 
+
+""" code skeleton taken from Pytorch tutorial: https://pytorch.org/tutorials/advanced/neural_style_tutorial.html """
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class ContentLoss(nn.Module):
+    """ computes loss between content (target) image and generated (input) using MSE for spatial loss"""
 
-    def __init__(self, target,):
+    def __init__(self, target):
         super(ContentLoss, self).__init__()
-        # we 'detach' the target content from the tree used
-        # to dynamically compute the gradient: this is a stated value,
-        # not a variable. Otherwise the forward method of the criterion
-        # will throw an error.
-        self.target = target.detach()
 
-    def forward(self, input):
-        self.loss = F.mse_loss(input, self.target)
+    def forward(self, input, target):
+        b, c, h, w = input.shape
+
+        self.loss = (1 /(c * h * w)) * F.mse_loss(input, target)
         return input
 
 
@@ -45,28 +46,60 @@ def gram_matrix(input):
 
 
 class StyleLoss(nn.Module):
+    """ computes loss between style image (input) and generated image (target) using Gram matrix for spatial loss """
 
     def __init__(self, target_feature):
         super(StyleLoss, self).__init__()
-        self.target = gram_matrix(target_feature).detach()
 
-    def forward(self, input):
-        G = gram_matrix(input)
-        self.loss = F.mse_loss(G, self.target)
+    def forward(self, input, target):
+        input_G = gram_matrix(input)
+        target_G = gram_matrix(target)
+
+        numChannels = input.shape[3]
+        self.loss = (1 / numChannels ** 2) * F.mse_loss(input_G, target_G)
         return input
 
+class TVLoss(nn.Module):
+    """ TV regularization factor for spatial loss (Huang section 3.2.1) """
+    def forward(self, input):
+        b, c, h, w = input.shape
 
-cnn = models.vgg19(pretrained=True).features.to(device).eval()
+        sum = 0
+        for i_c in range(c):
+            for i_h in range(h-1):
+                for i_w in range(w-1):
+                    sum += (input[0][i_c][i_h][i_w+1] - input[0][i_c][i_h][i_w]) ** 2
+                    sum += (input[0][i_c][i_h+1][i_w] - input[0][i_c][i_h][i_w]) ** 2
 
-cnn_normalization_mean = torch.tensor([0.485, 0.456, 0.406]).to(device)
-cnn_normalization_std = torch.tensor([0.229, 0.224, 0.225]).to(device)
+        return sum ** 0.5
 
 
-# create a module to normalize input image so we can easily put it in a
-# nn.Sequential
+class TemporalLoss(nn.Module):
+    """
+    computes loss between consecutive generated frame
+    x: frame t
+    f_x1: optical flow(frame t-1)
+    cm: confidence mask of optical flow
+    """
+    def __init__(self, gpu):
+        if gpu:
+            loss = nn.MSELoss().cuda()
+        else:
+            loss = nn.MSELoss()
+        self.loss = loss
+
+    def forward(self, x, f_x1, cm):
+        assert x.shape == f_x1, "inputs are not the same"
+        x = x.view(1, -1)
+        f_x1 = f_x1.view(1, -1)
+        cm = cm.view(-1)
+
+        D = f_x1.shape[1]
+        return (1 / D) * cm * x, f_x1
 
 
 class Normalization(nn.Module):
+    """ module to normalize input image so we can easily put it in a nn.Sequential """
     def __init__(self, mean, std):
         super(Normalization, self).__init__()
         # .view the mean and std to make them [C x 1 x 1] so that they can
@@ -80,12 +113,19 @@ class Normalization(nn.Module):
         return (img - self.mean) / self.std
 
 
+""" Defaults for hybrid loss network """
+
 # desired depth layers to compute style/content losses :
 content_layers_default = ['relu_10']
 style_layers_default = ['relu_2', 'relu_4', 'relu_6', 'relu_10']
 
+cnn = models.vgg19(pretrained=True).features.to(device).eval()
 
-def get_loss_network(style_img, content_img, cnn=cnn,
+cnn_normalization_mean = torch.tensor([0.485, 0.456, 0.406]).to(device)
+cnn_normalization_std = torch.tensor([0.229, 0.224, 0.225]).to(device)
+
+
+def get_spatial_loss_network(style_img, cnn=cnn,
                     normalization_mean=normalization_mean,
                     normalization_std=normalization_std,
                     content_layers=content_layers_default,
@@ -99,7 +139,7 @@ def get_loss_network(style_img, content_img, cnn=cnn,
     # losses
     content_losses = []
     style_losses = []
-    temporal_losses = []
+
 
     # assuming that cnn is a nn.Sequential, so we make a new nn.Sequential
     # to put in modules that are supposed to be activated sequentially
@@ -128,7 +168,7 @@ def get_loss_network(style_img, content_img, cnn=cnn,
 
         if name in content_layers:
             # add content loss:
-            target = spatial_loss_network(content_img).detach()  # ??? what is this syntax ???
+            target = spatial_loss_network(content_img).detach()
             content_loss = ContentLoss(target)
             spatial_loss_network.add_module("content_loss_{}".format(i), content_loss)
             content_losses.append(content_loss)
@@ -140,11 +180,12 @@ def get_loss_network(style_img, content_img, cnn=cnn,
             spatial_loss_network.add_module("style_loss_{}".format(i), style_loss)
             style_losses.append(style_loss)
 
+        tv_loss = TVLoss()
     # now we trim off the layers after the last content and style losses
     # for i in range(len(spatial_loss_network) - 1, -1, -1):
     #     if isinstance(spatial_loss_network[i], ContentLoss) or isinstance(spatial_loss_network[i], StyleLoss):
     #         break
 
     # spatial_loss_network = spatial_loss_network[:(i + 1)]
-    temporal_loss, spatial_loss_network,
-    return spatial_loss_network, temporal_loss_module, style_losses, content_losses, temporal_losses
+
+    return spatial_loss_network, style_losses, content_losses
