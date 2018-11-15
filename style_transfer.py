@@ -97,13 +97,6 @@ imshow(style_img, title='Style Image')
 # plt.figure()
 # imshow(generated, title='Input Image')
 
-def get_input_optimizer(stylization_network):
-    # this line to show that input is a parameter that requires a gradient
-
-    # Adam???
-    optimizer = optim.LBFGS(stylization_network.parameters())
-    return optimizer
-
 # hyperperameter defaults (specified in section 4.1)
 default_content_weight = 1
 default_style_weight = 10
@@ -111,7 +104,7 @@ default_temporal_weight = 10000
 default_variation_weight = .001
 
 def run_style_transfer(cnn, normalization_mean, normalization_std,
-                       style_img, num_steps=300,
+                       style_img, num_steps=200,
                        style_weight=default_style_weight,
                        content_weight=default_content_weight,
                        temporal_weight=default_temporal_weight
@@ -129,16 +122,17 @@ def run_style_transfer(cnn, normalization_mean, normalization_std,
 
     spatial_loss_network, style_losses, content_losses = get_spatial_loss_network(style_img)
 
-    tv = TVLoss() #TODO: initialize TV with generated frame
+    tv = TVLoss(generated) #TODO: initialize TV with generated frame
 
     temporal_loss = TemporalLoss()
 
-    optimizer = get_input_optimizer(stylization_network) # TODO: Replace with ADAM (see section 4.1)
+    optimizer = optim.Adam(stylization_network.parameters()) # TODO: Replace with ADAM (see section 4.1)
 
     print('Optimizing..')
     run = [0]
 
     # get loader of video
+    loader = get_loader(1, self.data_path, self.img_shape, self.transform)
 
     while run[0] <= num_steps:
         # loader is an iterator so it must be accessed with enumerate()
@@ -215,7 +209,6 @@ def run_style_transfer(cnn, normalization_mean, normalization_std,
 
                     # return style_loss + content_loss #old final loss
                     return spatial_loss + temporal_loss # backpropogated hybrid loss
-
                 optimizer.step(closure)
 
         # a last correction...

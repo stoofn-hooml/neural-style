@@ -19,16 +19,16 @@ import copy
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class ContentLoss(nn.Module):
-    """ computes loss between content (target) image and generated (input) using MSE for spatial loss"""
+    """ computes loss between content image and generated using MSE for spatial loss"""
 
     def __init__(self):
         super(ContentLoss, self).__init__()
 
-    def forward(self, input, generated):
-        b, c, h, w = input.shape
+    def forward(self, content, generated):
+        b, c, h, w = content.shape
 
-        self.loss = (1 /(c * h * w)) * F.mse_loss(input, generated)
-        return input
+        self.loss = (1 /(c * h * w)) * F.mse_loss(content, generated)
+        return generated
 
 
 def gram_matrix(input):
@@ -48,16 +48,15 @@ def gram_matrix(input):
 class StyleLoss(nn.Module):
     """ computes loss between style image and generated image using Gram matrix for spatial loss """
 
-    def __init__(self, style):
+    def __init__(self, style_feature_map):
         super(StyleLoss, self).__init__()
-        self.style = style
+        self.style_feature_map_G = gram_matrix(style_feature_map).detach()
 
-    def forward(self, generated):
+    def forward(self, content, generated):
         generated_G = gram_matrix(generated)
-        style_G = gram_matrix(self.style)
 
         numChannels = generated.shape[3]
-        self.loss = (1 / numChannels ** 2) * F.mse_loss(generated_G, style_G)
+        self.loss = (1 / numChannels ** 2) * F.mse_loss(generated_G, self.style_feature_map_G)
         return generated
 
 class TVLoss(nn.Module):
@@ -65,15 +64,15 @@ class TVLoss(nn.Module):
     def __init__(self):
         super(TVLoss, self).__init__()
 
-    def forward(self, input): #calculates overall pixel smoothness for handling checkerboard artifacts
-        b, c, h, w = input.shape
+    def forward(self, generated): #calculates overall pixel smoothness for handling checkerboard artifacts
+        b, c, h, w = generated.shape
 
         sum = 0
         for i_c in range(c):
             for i_h in range(h-1):
                 for i_w in range(w-1):
-                    sum += (input[0][i_c][i_h][i_w+1] - input[0][i_c][i_h][i_w]) ** 2
-                    sum += (input[0][i_c][i_h+1][i_w] - input[0][i_c][i_h][i_w]) ** 2
+                    sum += (generated[0][i_c][i_h][i_w+1] - generated[0][i_c][i_h][i_w]) ** 2
+                    sum += (generated[0][i_c][i_h+1][i_w] - generated[0][i_c][i_h][i_w]) ** 2
 
         return sum ** 0.5
 
@@ -81,7 +80,7 @@ class TVLoss(nn.Module):
 class TemporalLoss(nn.Module): # TODO: Rename variables
     """
     computes loss between consecutive generated frame
-    x: frame t
+    generated_t: frame t
     flow_t1: optical flow(frame t-1)
     mask: confidence mask of optical flow
     """
@@ -92,29 +91,29 @@ class TemporalLoss(nn.Module): # TODO: Rename variables
             loss = nn.MSELoss()
         self.loss = loss
 
-    def forward(self, x, flow_t1, mask):
-        assert x.shape == flow_t1, "inputs are not the same"
-        x = x.view(1, -1)
+    def forward(self, generated_t, flow_t1, mask):
+        assert generated_t.shape == flow_t1, "inputs are not the same"
+        generated_t = generated_t.view(1, -1)
         flow_t1 = flow_t1.view(1, -1)
         mask = mask.view(-1)
 
         D = flow_t1.shape[1]
-        return (1 / D) * mask * x, flow_t1
+        return (1 / D) * mask * generated_t, flow_t1
 
 
-class Normalization(nn.Module):
-    """ module to normalize input image so we can easily put it in a nn.Sequential """
-    def __init__(self, mean, std):
-        super(Normalization, self).__init__()
-        # .view the mean and std to make them [C x 1 x 1] so that they can
-        # directly work with image Tensor of shape [B x C x H x W].
-        # B is batch size. C is number of channels. H is height and W is width.
-        self.mean = torch.tensor(mean).view(-1, 1, 1)
-        self.std = torch.tensor(std).view(-1, 1, 1)
-
-    def forward(self, img):
-        # normalize img
-        return (img - self.mean) / self.std
+# class Normalization(nn.Module):
+#     """ module to normalize input image so we can easily put it in a nn.Sequential """
+#     def __init__(self, mean, std):
+#         super(Normalization, self).__init__()
+#         # .view the mean and std to make them [C x 1 x 1] so that they can
+#         # directly work with image Tensor of shape [B x C x H x W].
+#         # B is batch size. C is number of channels. H is height and W is width.
+#         self.mean = torch.tensor(mean).view(-1, 1, 1)
+#         self.std = torch.tensor(std).view(-1, 1, 1)
+#
+#     def forward(self, content, generated):
+#         # normalize img
+#         return (generated - self.mean) / self.std
 
 
 """ Defaults for hybrid loss network """
@@ -137,7 +136,7 @@ def get_spatial_loss_network(style_img, vgg=vgg,
     vgg = copy.deepcopy(vgg)
 
     # normalization module
-    normalization = Normalization(normalization_mean, normalization_std).to(device)
+    # normalization = Normalization(normalization_mean, normalization_std).to(device)
 
     # just in order to have an iterable access to or list of content/style losses
     content_losses = []
@@ -146,7 +145,8 @@ def get_spatial_loss_network(style_img, vgg=vgg,
 
     # assuming that vgg is a nn.Sequential, so we make a new nn.Sequential
     # to put in modules that are supposed to be activated sequentially
-    spatial_loss_network = nn.Sequential(normalization)
+    # spatial_loss_network = nn.Sequential(normalization)
+    spatial_loss_network = nn.Sequential()
 
     i = 0  # increment every time we see a conv
     for layer in vgg.children():
@@ -167,6 +167,7 @@ def get_spatial_loss_network(style_img, vgg=vgg,
             raise RuntimeError('Unrecognized layer: {}'.format(layer.__class__.__name__))
 
         spatial_loss_network.add_module(name, layer)
+
         print(name)
 
         if name in content_layers:
@@ -178,8 +179,8 @@ def get_spatial_loss_network(style_img, vgg=vgg,
 
         if name in style_layers:
             # add style loss:
-            style = spatial_loss_network(style_img).detach()
-            style_loss = StyleLoss(style)
+            style_feature_map = spatial_loss_network(style_img, style_img).detach()
+            style_loss = StyleLoss(style_feature_map)
             spatial_loss_network.add_module("style_loss_{}".format(i), style_loss)
             style_losses.append(style_loss)
 
@@ -187,7 +188,7 @@ def get_spatial_loss_network(style_img, vgg=vgg,
     # for i in range(len(spatial_loss_network) - 1, -1, -1):
     #     if isinstance(spatial_loss_network[i], ContentLoss) or isinstance(spatial_loss_network[i], StyleLoss):
     #         break
-
+    #
     # spatial_loss_network = spatial_loss_network[:(i + 1)]
 
     return spatial_loss_network, style_losses, content_losses
