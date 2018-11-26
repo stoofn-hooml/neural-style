@@ -52,25 +52,29 @@ from opticalflow import opticalflow
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-imsize = 512 if torch.cuda.is_available() else 128
+# imsize = 512 if torch.cuda.is_available() else 128
 
-loader = transforms.Compose([
-    transforms.Resize(imsize),  # scale imported image
+# use shape instead of size so we can be sure that content frames will be the same
+img_shape = (640, 360)
+
+transform = transforms.Compose([
+    transforms.Resize(img_shape),  # scale imported image
     transforms.ToTensor()])  # transform it into a torch tensor
 
-
-def image_loader(image_name):
-    image = Image.open(image_name)
+# resize, convert to tensor, add dimension, put on GPU if available
+def transform_img(image_name):
+    # image = Image.open(image_name)  # load the image in the call so this can be used for video.read
     # fake batch dimension required to fit network's input dimensions
-    image = loader(image).unsqueeze(0)
+    image = transform(image).unsqueeze(0) # adds another dimension to tensor
     return image.to(device, torch.float)
 
 
-style_img = image_loader("./images/picasso.jpg")
-# content_img = image_loader("./images/dancing.jpg")
+style_img = transform_img(Image.open("./images/picasso.jpg"))
+content_path = CONTENT_PATH
+# content_img = transform_img("./images/dancing.jpg")
 
-assert style_img.size() == content_img.size(), \
-    "we need to import style and content images of the same size"
+# assert style_img.size() == content_img.size(), \
+#     "we need to import style and content images of the same size"
 
 unloader = transforms.ToPILImage()  # reconvert into PIL image
 
@@ -92,10 +96,10 @@ imshow(style_img, title='Style Image')
 # plt.figure()
 # imshow(content_img, title='Content Image')
 
-
 # add the original input image to the figure:
 # plt.figure()
 # imshow(generated, title='Input Image')
+
 
 # hyperperameter defaults (specified in section 4.1)
 default_content_weight = 1
@@ -103,14 +107,13 @@ default_style_weight = 10
 default_temporal_weight = 10000
 default_variation_weight = .001
 
-def run_style_transfer(cnn, normalization_mean, normalization_std,
-                       style_img, num_steps=200,
-                       style_weight=default_style_weight,
+def run_style_transfer(style_img, num_steps=200,
                        content_weight=default_content_weight,
+                       style_weight=default_style_weight,
                        temporal_weight=default_temporal_weight
                        variation_weight=default_variation_weight):
     """Run the style transfer."""
-    print('Building the style transfer model..')
+    print('Building the style transfer model...')
 
     # initialize starting values/networks
 
@@ -119,25 +122,23 @@ def run_style_transfer(cnn, normalization_mean, normalization_std,
     # generated = torch.randn(content_img.data.size(), device=device)
 
     stylization_network = StylizationNetwork()
-
     spatial_loss_network, style_losses, content_losses = get_spatial_loss_network(style_img)
 
-    tv = TVLoss(generated) #TODO: initialize TV with generated frame
-
+    tv = TVLoss()
     temporal_loss = TemporalLoss()
 
     optimizer = optim.Adam(stylization_network.parameters()) # TODO: Replace with ADAM (see section 4.1)
 
-    print('Optimizing..')
-    run = [0]
+    print('Optimizing...')
+    steps_completed = 0
 
     # get loader of video
-    loader = get_loader(1, self.data_path, self.img_shape, self.transform)
+    video_loader = get_loader(1, content_path, transform_img)
 
-    while run[0] <= num_steps:
-        # loader is an iterator so it must be accessed with enumerate()
-        # each element of enumerate(loader) is a list of frames (a video)
-        for unused, frames in enumerate(loader):
+    while steps_completed <= num_steps:
+        # video_loader is an iterator so it must be accessed with enumerate()
+        # each element of enumerate(video_loader) is a list of frames (a video)
+        for unused, frames in enumerate(video_loader):
             # loop through all the frames for each video
             for i in range(1, len(frames)):
                 def closure():
@@ -146,6 +147,9 @@ def run_style_transfer(cnn, normalization_mean, normalization_std,
 
                     generated_t = stylization_network(content_t)
                     generated_t1 = stylization_network(content_t1)
+
+                    # generated_t.data.clamp_(0, 1)    # should we clamp? Tut does, example doesn't
+                    # generated_t1.data.clamp_(0, 1)
 
                     # correct the values of updated input image
                     # generated.data.clamp_(0, 1)
@@ -200,9 +204,9 @@ def run_style_transfer(cnn, normalization_mean, normalization_std,
                     hybrid_loss = spatial_loss + temporal_loss
                     hybrid_loss.backward()
 
-                    run[0] += 1
-                    if run[0] % 50 == 0:
-                        print("run {}:".format(run))
+                    steps_completed += 1
+                    if steps_completed % 50 == 0:
+                        print("Step {}:".format(steps_completed))
                         print('Style Loss : {:4f} Content Loss: {:4f} Temporal Loss: {:4f}'.format(
                             total_style_loss.item(), total_content_loss.item(), temporal_loss.item()))
                         print()
@@ -217,8 +221,7 @@ def run_style_transfer(cnn, normalization_mean, normalization_std,
         return generated
 
 
-output = run_style_transfer(cnn, cnn_normalization_mean, cnn_normalization_std,
-                            content_img, style_img, generated, 300, 1000000, 1)
+output = run_style_transfer(style_img, generated, 300, 1000000, 1)
 
 plt.figure()
 imshow(output, title='Output Image')

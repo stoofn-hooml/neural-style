@@ -101,19 +101,19 @@ class TemporalLoss(nn.Module): # TODO: Rename variables
         return (1 / D) * mask * generated_t, flow_t1
 
 
-# class Normalization(nn.Module):
-#     """ module to normalize input image so we can easily put it in a nn.Sequential """
-#     def __init__(self, mean, std):
-#         super(Normalization, self).__init__()
-#         # .view the mean and std to make them [C x 1 x 1] so that they can
-#         # directly work with image Tensor of shape [B x C x H x W].
-#         # B is batch size. C is number of channels. H is height and W is width.
-#         self.mean = torch.tensor(mean).view(-1, 1, 1)
-#         self.std = torch.tensor(std).view(-1, 1, 1)
-#
-#     def forward(self, content, generated):
-#         # normalize img
-#         return (generated - self.mean) / self.std
+class Normalization(nn.Module):
+    """ module to normalize input image so we can easily put it in a nn.Sequential """
+    def __init__(self, mean, std):
+        super(Normalization, self).__init__()
+        # .view the mean and std to make them [C x 1 x 1] so that they can
+        # directly work with image Tensor of shape [B x C x H x W].
+        # B is batch size. C is number of channels. H is height and W is width.
+        self.mean = torch.tensor(mean).view(-1, 1, 1)
+        self.std = torch.tensor(std).view(-1, 1, 1)
+
+    def forward(self, content, generated):
+        # normalize img
+        return (generated - self.mean) / self.std
 
 
 """ Defaults for hybrid loss network """
@@ -136,7 +136,7 @@ def get_spatial_loss_network(style_img, vgg=vgg,
     vgg = copy.deepcopy(vgg)
 
     # normalization module
-    # normalization = Normalization(normalization_mean, normalization_std).to(device)
+    normalization = Normalization(normalization_mean, normalization_std).to(device)
 
     # just in order to have an iterable access to or list of content/style losses
     content_losses = []
@@ -145,8 +145,8 @@ def get_spatial_loss_network(style_img, vgg=vgg,
 
     # assuming that vgg is a nn.Sequential, so we make a new nn.Sequential
     # to put in modules that are supposed to be activated sequentially
-    # spatial_loss_network = nn.Sequential(normalization)
-    spatial_loss_network = nn.Sequential()
+    spatial_loss_network = nn.Sequential(normalization)
+    # spatial_loss_network = nn.Sequential()
 
     i = 0  # increment every time we see a conv
     for layer in vgg.children():
