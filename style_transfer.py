@@ -100,6 +100,7 @@ imshow(style_img, title='Style Image')
 # plt.figure()
 # imshow(generated, title='Input Image')
 
+model_path = "./models/model.pth"
 
 # hyperperameter defaults (specified in section 4.1)
 default_content_weight = 1
@@ -107,7 +108,7 @@ default_style_weight = 10
 default_temporal_weight = 10000
 default_variation_weight = .001
 
-def run_style_transfer(style_img, num_steps=200,
+def train_stylization_network(style_img, num_steps=200,
                        content_weight=default_content_weight,
                        style_weight=default_style_weight,
                        temporal_weight=default_temporal_weight
@@ -216,16 +217,19 @@ def run_style_transfer(style_img, num_steps=200,
                 optimizer.step(closure)
 
         # a last correction...
-        generated.data.clamp_(0, 1)
+        # generated.data.clamp_(0, 1)
+
+        # save the model parameters after training
+        torch.save(stylization_network.state_dict(), model_path)
 
         return generated
 
 
-output = run_style_transfer(style_img, generated, 300, 1000000, 1)
+train_stylization_network(style_img)
 
-plt.figure()
-imshow(output, title='Output Image')
+# plt.figure()
+# imshow(output, title='Output Image')
 
 # sphinx_gallery_thumbnail_number = 4
-plt.ioff()
-plt.show()
+# plt.ioff()
+# plt.show()
