@@ -62,7 +62,7 @@ transform = transforms.Compose([
     transforms.ToTensor()])  # transform it into a torch tensor
 
 # resize, convert to tensor, add dimension, put on GPU if available
-def transform_img(image_name):
+def transform_img(image):
     # image = Image.open(image_name)  # load the image in the call so this can be used for video.read
     # fake batch dimension required to fit network's input dimensions
     image = transform(image).unsqueeze(0) # adds another dimension to tensor
@@ -70,7 +70,7 @@ def transform_img(image_name):
 
 
 style_img = transform_img(Image.open("./images/picasso.jpg"))
-content_path = CONTENT_PATH
+content_path = './videos'
 # content_img = transform_img("./images/dancing.jpg")
 
 # assert style_img.size() == content_img.size(), \
@@ -111,7 +111,7 @@ default_variation_weight = .001
 def train_stylization_network(style_img, num_steps=200,
                        content_weight=default_content_weight,
                        style_weight=default_style_weight,
-                       temporal_weight=default_temporal_weight
+                       temporal_weight=default_temporal_weight,
                        variation_weight=default_variation_weight):
     """Run the style transfer."""
     print('Building the style transfer model...')

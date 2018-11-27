@@ -25,6 +25,7 @@ class ContentLoss(nn.Module):
         super(ContentLoss, self).__init__()
 
     def forward(self, content, generated):
+        print("content forward")
         b, c, h, w = content.shape
 
         self.loss = (1 /(c * h * w)) * F.mse_loss(content, generated)
@@ -53,6 +54,7 @@ class StyleLoss(nn.Module):
         self.style_feature_map_G = gram_matrix(style_feature_map).detach()
 
     def forward(self, content, generated):
+        print("style forward")
         generated_G = gram_matrix(generated)
 
         numChannels = generated.shape[3]
@@ -65,6 +67,8 @@ class TVLoss(nn.Module):
         super(TVLoss, self).__init__()
 
     def forward(self, generated): #calculates overall pixel smoothness for handling checkerboard artifacts
+        print("tv forward")
+
         b, c, h, w = generated.shape
 
         sum = 0
@@ -92,6 +96,8 @@ class TemporalLoss(nn.Module): # TODO: Rename variables
         self.loss = loss
 
     def forward(self, generated_t, flow_t1, mask):
+        print("temporal forward")
+
         assert generated_t.shape == flow_t1, "inputs are not the same"
         generated_t = generated_t.view(1, -1)
         flow_t1 = flow_t1.view(1, -1)
@@ -112,6 +118,8 @@ class Normalization(nn.Module):
         self.std = torch.tensor(std).view(-1, 1, 1)
 
     def forward(self, content, generated):
+        print("norm forward")
+
         # normalize img
         return (generated - self.mean) / self.std
 
@@ -179,7 +187,9 @@ def get_spatial_loss_network(style_img, vgg=vgg,
 
         if name in style_layers:
             # add style loss:
-            style_feature_map = spatial_loss_network(style_img, style_img).detach()
+            # print(style_img)
+            doggy = torch.randn(style_img.data.size(), device=device)
+            style_feature_map = spatial_loss_network(style_img, doggy)
             style_loss = StyleLoss(style_feature_map)
             spatial_loss_network.add_module("style_loss_{}".format(i), style_loss)
             style_losses.append(style_loss)

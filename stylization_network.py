@@ -14,32 +14,38 @@ import torchvision.models as models
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def conv_block(in_channels, out_channels, kernel_size, stride, activation, transpose=False):
-    if activation == 'ReLu':
-        act = nn.Relu()
-    elif activation == 'Tanh':
+
+    print(" activation is ... " + activation)
+    # if activation == 'ReLu':
+    #     act = nn.Relu()
+    # elif activation == 'Tanh':
+    #     act = nn.Tanh()
+
+    act = nn.ReLU()
+    if activation == 'Tanh':
         act = nn.Tanh()
 
     if activation == '':
-        return nn.sequential(
+        return nn.Sequential(
             nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride),
             nn.InstanceNorm2d(out_channels)
         )
     elif transpose: #for deconvolution blocks
-        return nn.sequential(
+        return nn.Sequential(
             nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride),
             nn.InstanceNorm2d(out_channels), # ???
             act
         )
     else: #for normal onvolution blocks
-        return nn.sequential(
-            nn.conv2d(in_channels, out_channels, kernel_size, stride),
+        return nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size, stride),
             nn.InstanceNorm2d(out_channels), # ???
             act
         )
 
 def res_block(in_channels, out_channels, kernel_size, stride):
-    return nn.sequential(
-        conv_block(in_channels, out_channels, kernel_size, stride, 'ReLu'),
+    return nn.Sequential(
+        conv_block(in_channels, out_channels, kernel_size, stride, 'ReLU'),
         conv_block(in_channels, out_channels, kernel_size, stride, '')
     )
 
@@ -51,9 +57,9 @@ class StylizationNetwork(nn.Module):
         super(StylizationNetwork, self).__init__()
 
         #  (in_channels, out_channels, kernel_size (filter), stride)
-        self.conv_block_1 = conv_block(3, 16, 3, 1, 'Relu')
-        self.conv_block_2 = conv_block(16, 32, 3, 2, 'Relu')
-        self.conv_block_3 = conv_block(32, 48, 3, 2, 'Relu')
+        self.conv_block_1 = conv_block(3, 16, 3, 1, 'ReLU')
+        self.conv_block_2 = conv_block(16, 32, 3, 2, 'ReLU')
+        self.conv_block_3 = conv_block(32, 48, 3, 2, 'ReLU')
 
         self.res_block_1 = res_block(48, 48, 3, 1)
         self.res_block_2 = res_block(48, 48, 3, 1)
