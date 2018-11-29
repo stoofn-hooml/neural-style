@@ -1,13 +1,19 @@
 import cv2
+from stylization_network import StylizationNetwork
+from train_stylization_network import transformImg, imshow
+import torch
+from PIL import Image
+
+import matplotlib.pyplot as plt
 
 video_path = './videos_to_stylize/fulldogs.mov'
 
 video = cv2.VideoCapture(video_path)
 
 # https://stackoverflow.com/questions/42703500/best-way-to-save-a-trained-model-in-pytorch
-model_path = model_path = "./models/model.pth"
-# stylization_network = StylizationNetwork()
-# stylization_network.load_state_dict(torch.load(model_path))
+model_path = "./models/model.pth"
+stylization_network = StylizationNetwork()
+stylization_network.load_state_dict(torch.load(model_path))
 
 fps = video.get(cv2.CAP_PROP_FPS)
 print(fps)
@@ -24,10 +30,25 @@ while(True):
     ret, frame = video.read()
     frame_count += 1
 
-    frame = cv2.resize(frame, (640, 360))
-    # stylized_frame = stylization_network(frame)
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    pil_frame = Image.fromarray(rgb_frame)
 
-    cv2.imshow('Frame', frame)
+    # resize, convert to tensor, add dimension, put on GPU if available
+    # rgb_frame = self.transformImg(rgb_frame)
+    transformed_frame = transformImg(pil_frame, True)
+
+    stylized_frame = stylization_network(transformed_frame)
+    stylized_frame.data.clamp_(0, 1)
+
+    print(stylized_frame, stylized_frame.shape)
+
+    # plt.figure()
+    imshow(stylized_frame, title='Stylized')
+
+    # plt.figure()
+    imshow(transformed_frame, title='Normal')
+
+    # cv2.imshow('Frame', frame)
 
 
     # Press Q on keyboard to  exit

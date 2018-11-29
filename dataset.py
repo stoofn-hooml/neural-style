@@ -10,9 +10,9 @@ from torchvision import datasets, transforms
 """ taken from curaai00 on Github: https://github.com/curaai00/RT-StyleTransfer-forVideo/blob/master/opticalflow.py """
 
 class Dataset(data.Dataset):
-    def __init__(self, data_path, transform_img):
+    def __init__(self, data_path, transformImg):
         self.data_path = data_path
-        self.transform_img = transform_img
+        self.transformImg = transformImg
         self.video_list = os.listdir(data_path)
 
     def __getitem__(self, i):
@@ -33,8 +33,8 @@ class Dataset(data.Dataset):
                 pil_frame = Image.fromarray(rgb_frame)
 
                 # resize, convert to tensor, add dimension, put on GPU if available
-                # rgb_frame = self.transform_img(rgb_frame)
-                transformed_frame = self.transform_img(pil_frame, False)
+                # rgb_frame = self.transformImg(rgb_frame)
+                transformed_frame = self.transformImg(pil_frame, False)
                 frames.append(transformed_frame)
                 # print("appended")
             else:
@@ -46,8 +46,8 @@ class Dataset(data.Dataset):
         return len(self.video_list)
 
 
-def get_loader(batch_size, data_path, transform_img, shuffle=True):
-    dataset = Dataset(data_path, transform_img)
+def get_loader(batch_size, data_path, transformImg, shuffle=True):
+    dataset = Dataset(data_path, transformImg)
     loader = data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=0)
 
     return loader

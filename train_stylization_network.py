@@ -50,17 +50,19 @@ from hybrid_loss_network import SpatialLossNetwork, ContentLoss, StyleLoss, TVLo
 from dataset import get_loader
 from opticalflow import opticalflow
 
+import datetime
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # use shape instead of size so we can be sure that content frames will be the same
-img_shape = (640, 360) if torch.cuda.is_available() else (128, 72)
+img_shape = (360, 640) if torch.cuda.is_available() else (72, 128)
 
 transform = transforms.Compose([
     transforms.Resize(img_shape),  # scale imported image
     transforms.ToTensor()])  # transform it into a torch tensor
 
 # resize, convert to tensor, add dimension, put on GPU if available
-def transform_img(image, style):
+def transformImg(image, style):
     # fake batch dimension required to fit network's input dimensions
     image = transform(image) # adds another dimension to tensor
     if (style):
@@ -68,12 +70,13 @@ def transform_img(image, style):
     return image.to(device, torch.float)
 
 
-style_img = transform_img(Image.open("./images/picasso.jpg"), True)
+style_img = transformImg(Image.open("./images/starry.jpg"), True)
 content_path = './content_videos'
 unloader = transforms.ToPILImage()  # reconvert into PIL image
 plt.ion()
 
 def imshow(tensor, title=None):
+
     image = tensor.cpu().clone()  # we clone the tensor to not do changes on it
     image = image.squeeze(0)      # remove the fake batch dimension
     image = unloader(image)
@@ -93,7 +96,7 @@ imshow(style_img, title='Style Image')
 # plt.figure()
 # imshow(generated, title='Input Image')
 
-model_path = "./models/model.pth"
+model_path = "./models/model" + str(datetime.datetime.now()) + ".pth"
 
 # hyperperameter defaults (specified in section 4.1)
 default_content_weight = 1
@@ -126,7 +129,7 @@ def train_stylization_network(style_img, num_steps=200,
     steps_completed = 0
 
     # get loader of video
-    video_loader = get_loader(1, content_path, transform_img)
+    video_loader = get_loader(1, content_path, transformImg)
 
     while steps_completed <= num_steps:
         # video_loader is an iterator so it must be accessed with enumerate()
@@ -181,16 +184,22 @@ def train_stylization_network(style_img, num_steps=200,
                 total_style_loss *= style_weight
                 print("style loss", total_style_loss)
 
-
-
                 # regularization (TV Regularizer, section 3.2.1)
                 tv_loss = tv(generated_t_style_activations[3]) #???
                 tv_loss *= variation_weight
                 print("tv loss", tv_loss)
 
-
                 # final spatial loss
                 spatial_loss = total_style_loss + total_content_loss + tv_loss
+
+                # from deepmatching import deepmatching
+                # from deepflow2 import deepflow2
+                # import numpy
+                #
+                # im1 = numpy.array(Image.open('sintel1.png'))
+                # im2 = numpy.array(Image.open('sintel2.png'))
+                # matches = deepmatching(im1, im2)
+                # flow = deepflow2(im1, im2, matches, '-sintel')
 
                 # Optical flow (Temporal Loss, section 3.2.2)
                 # flow_t1, mask = opticalflow(generated_t.squeeze(0).permute(1, 2, 0).data.numpy(), generated_t1.squeeze(0).permute(1, 2, 0).data.numpy())
@@ -212,11 +221,12 @@ def train_stylization_network(style_img, num_steps=200,
                     print('Style Loss : {:4f} Content Loss: {:4f} Temporal Loss: {:4f}'.format(
                         total_style_loss.item(), total_content_loss.item(), temporal_loss.item()))
                     print()
+            torch.save(stylization_network.state_dict(), model_path)
         # save the model parameters after training
-        torch.save(stylization_network.state_dict(), model_path)
+        # torch.save(stylization_network.state_dict(), model_path)
 
-
-train_stylization_network(style_img)
+if __name__ == "__main__":
+    train_stylization_network(style_img)
 
 # plt.figure()
 # imshow(output, title='Output Image')
