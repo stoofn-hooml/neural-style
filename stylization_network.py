@@ -15,33 +15,21 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def conv_block(in_channels, out_channels, kernel_size, stride, activation, transpose=False):
 
-    print(" activation is ... " + activation)
-    # if activation == 'ReLu':
-    #     act = nn.Relu()
-    # elif activation == 'Tanh':
-    #     act = nn.Tanh()
+    block = nn.Sequential()
 
-    act = nn.ReLU()
-    if activation == 'Tanh':
-        act = nn.Tanh()
+    if transpose:
+        block.add_module('DeConv', nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride, 1, output_padding=1))
+    else:
+        block.add_module('Conv', nn.Conv2d(in_channels, out_channels, kernel_size, stride, 1))
 
-    if activation == '':
-        return nn.Sequential(
-            nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride),
-            nn.InstanceNorm2d(out_channels)
-        )
-    elif transpose: #for deconvolution blocks
-        return nn.Sequential(
-            nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride),
-            nn.InstanceNorm2d(out_channels), # ???
-            act
-        )
-    else: #for normal onvolution blocks
-        return nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size, stride),
-            nn.InstanceNorm2d(out_channels), # ???
-            act
-        )
+    block.add_module('Inst_norm', nn.InstanceNorm2d(out_channels))
+
+    if activation == 'ReLU':
+        block.add_module(activation, nn.ReLU(inplace=True))
+    elif activation == 'Tanh':
+        block.add_module(activation, nn.Tanh())
+
+    return block
 
 def res_block(in_channels, out_channels, kernel_size, stride):
     return nn.Sequential(
@@ -69,8 +57,8 @@ class StylizationNetwork(nn.Module):
 
         # 'deconvolutional blocks' are equivalent to transposed conv blocks
         # 0.5 stride in deconv translates to 2 stride in conv
-        self.deconv_block_1 = conv_block(48, 32, 3, 2, 'Relu', True)
-        self.deconv_block_2 = conv_block(32, 16, 3, 2, 'Relu', True)
+        self.deconv_block_1 = conv_block(48, 32, 3, 2, 'ReLU', transpose=True)
+        self.deconv_block_2 = conv_block(32, 16, 3, 2, 'ReLU', transpose=True)
 
         self.conv_block_4 = conv_block(16, 3, 3, 1, 'Tanh')
 
@@ -79,10 +67,10 @@ class StylizationNetwork(nn.Module):
         conv2 = self.conv_block_2(conv1)
         conv3 = self.conv_block_3(conv2)
         res1 = self.res_block_1(conv3)
-        res2 = self.res_block_1(res1)
-        res3 = self.res_block_1(res2)
-        res4 = self.res_block_1(res3)
-        res5 = self.res_block_1(res4)
+        res2 = self.res_block_2(res1)
+        res3 = self.res_block_3(res2)
+        res4 = self.res_block_4(res3)
+        res5 = self.res_block_5(res4)
         deconv1 = self.deconv_block_1(res5)
         deconv2 = self.deconv_block_2(deconv1)
         conv4 = self.conv_block_4(deconv2)

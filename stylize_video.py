@@ -1,6 +1,6 @@
 import cv2
 
-video_path = './videos/fulldogs.mov'
+video_path = './videos_to_stylize/fulldogs.mov'
 
 video = cv2.VideoCapture(video_path)
 
