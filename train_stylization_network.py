@@ -117,7 +117,7 @@ def train_stylization_network(style_img, num_steps=200,
 
     content_loss = ContentLoss(device=='cuda')
     style_loss = StyleLoss(device=='cuda')
-    tv_loss = TVLoss()
+    tv = TVLoss()
     temporal_loss = TemporalLoss()
 
     optimizer = optim.Adam(stylization_network.parameters())
@@ -184,7 +184,7 @@ def train_stylization_network(style_img, num_steps=200,
 
 
                 # regularization (TV Regularizer, section 3.2.1)
-                tv_loss = tv_loss(generated_t_style_activations[3]) #???
+                tv_loss = tv(generated_t_style_activations[3]) #???
                 tv_loss *= variation_weight
                 print("tv loss", tv_loss)
 
