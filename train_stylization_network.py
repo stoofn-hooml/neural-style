@@ -165,6 +165,7 @@ def train_stylization_network(style_img, num_steps=200,
                 # total content loss (section 3.2.1)
                 total_content_loss = content_loss_t + content_loss_t1
                 total_content_loss *= content_weight
+                print("content loss", total_content_loss)
 
                 # calculate style losses for current and previous frame
                 style_image_activations = spatial_loss_network(style_img)
@@ -178,23 +179,29 @@ def train_stylization_network(style_img, num_steps=200,
                 # total style loss (section 3.2.1)
                 total_style_loss = style_loss_t + style_loss_t1
                 total_style_loss *= style_weight
+                print("style loss", total_style_loss)
+
 
 
                 # regularization (TV Regularizer, section 3.2.1)
                 tv_loss = tv_loss(generated_t_style_activations[3]) #???
                 tv_loss *= variation_weight
+                print("tv loss", tv_loss)
+
 
                 # final spatial loss
                 spatial_loss = total_style_loss + total_content_loss + tv_loss
 
                 # Optical flow (Temporal Loss, section 3.2.2)
-                flow_t1, mask = opticalflow(generated_t.data.numpy(), generated_t1.data.numpy())
-
-                temporal_loss = TemporalLoss(generated_t, flow_t1, mask)
-                temporal_loss *= temporal_weight
+                # flow_t1, mask = opticalflow(generated_t.squeeze(0).permute(1, 2, 0).data.numpy(), generated_t1.squeeze(0).permute(1, 2, 0).data.numpy())
+                #
+                # temporal_loss = TemporalLoss(generated_t, flow_t1, mask)
+                # temporal_loss *= temporal_weight
 
                 # Hybrid loss and backprop
-                hybrid_loss = spatial_loss + temporal_loss
+                # hybrid_loss = spatial_loss + temporal_loss
+                print("Spatial loss is: ", spatial_loss)
+                hybrid_loss = spatial_loss
                 hybrid_loss.backward(retain_graph=True)
 
                 optimizer.step()

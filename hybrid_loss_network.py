@@ -140,10 +140,10 @@ vgg_normalization_mean = torch.tensor([0.485, 0.456, 0.406]).to(device)
 vgg_normalization_std = torch.tensor([0.229, 0.224, 0.225]).to(device)
 
 class SpatialLossNetwork(nn.Module):
+    #https://discuss.pytorch.org/t/accessing-intermediate-layers-of-a-pretrained-network-forward/12113/2
     def __init__(self):
         super(SpatialLossNetwork, self).__init__()
         features = list(models.vgg19(pretrained=True).features.to(device))[:23]
-        # features的第3，8，15，22层分别是: relu1_2,relu2_2,relu3_3,relu4_3
         self.features = nn.ModuleList(features).eval()
 
     def forward(self, x):
