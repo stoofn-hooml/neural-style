@@ -15,12 +15,10 @@ class Dataset(data.Dataset):
         self.transformImg = transformImg
         self.video_list = [file for file in os.listdir(data_path) if file[0] != "."]
         self.video_list.sort()
-        print(self.video_list)
 
     def __getitem__(self, i):
         video = cv2.VideoCapture(os.path.join(self.data_path, self.video_list[i]))
 
-        print(os.path.join(self.data_path, self.video_list[i]))
         frames = []
 
         framecount = 0
@@ -30,7 +28,7 @@ class Dataset(data.Dataset):
             # videos are 24 fps. Stop the frames at 240 to get 10 seconds of each
             if (ret and framecount < 240):
                 framecount += 1
-                print("frame ", framecount)
+                # print("frame ", framecount)
 
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 pil_frame = Image.fromarray(rgb_frame)
@@ -39,10 +37,10 @@ class Dataset(data.Dataset):
                 # rgb_frame = self.transformImg(rgb_frame)
                 transformed_frame = self.transformImg(pil_frame, False)
                 frames.append(transformed_frame)
-                # print("appended")
             else:
                 video.release()
 
+        print("Loaded", self.video_list[i])
         return frames
 
     def __len__(self):

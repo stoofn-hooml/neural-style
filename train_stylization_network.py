@@ -64,7 +64,6 @@ else:
 
 # use shape instead of size so we can be sure that content frames will be the same
 # img_shape = (360, 640) if torch.cuda.is_available() else (72, 128)
-# img_shape = (240, 426) if torch.cuda.is_available() else (72, 128)
 img_shape = (240, 426)
 print(img_shape)
 
@@ -84,10 +83,8 @@ def transformImg(image, style):
 style_img = transformImg(Image.open("./images/starry.jpg"), True)
 content_path = './content_videos'
 unloader = transforms.ToPILImage()  # reconvert into PIL image
-plt.ion()
 
 def imshow(tensor, title=None):
-
     image = tensor.cpu().clone()  # we clone the tensor to not do changes on it
     image = image.squeeze(0)      # remove the fake batch dimension
     image = unloader(image)
@@ -96,16 +93,6 @@ def imshow(tensor, title=None):
         plt.title(title)
     plt.pause(0.001)  # pause a bit so that plots are update
 
-
-# plt.figure()
-# imshow(style_img, title='Style Image')
-
-# plt.figure()
-# imshow(content_img, title='Content Image')
-
-# add the original input image to the figure:
-# plt.figure()
-# imshow(generated, title='Input Image')
 
 model_path = "./models/model" + str(datetime.datetime.now()) + ".pth"
 
@@ -117,7 +104,7 @@ default_variation_weight = .001
 
 # style_loss_layers = [1]
 
-def saveModel():
+def saveModel(stylization_network):
     print("Saving model to:", model_path)
     torch.save(stylization_network.state_dict(), model_path)
 
@@ -137,7 +124,7 @@ def train_stylization_network(style_img, num_steps=200,
     content_loss = ContentLoss(device).to(device)
     style_loss = StyleLoss(device).to(device)
     tv = TVLoss(device).to(device)
-    temporal_loss = TemporalLoss(device).to(device)
+    # temporal_loss = TemporalLoss(device).to(device)
 
     optimizer = optim.Adam(stylization_network.parameters())
 
@@ -153,14 +140,13 @@ def train_stylization_network(style_img, num_steps=200,
         for _, frames in enumerate(video_loader):
             # loop through all the frames for each video
             for i in range(1, len(frames)):
-                print(i)
+                print("Video", i)
 
                 content_t = frames[i];      # current frame
                 content_t1 = frames[i-1];   # previous frame
 
                 generated_t = stylization_network(content_t).to(device)
                 generated_t1 = stylization_network(content_t1).to(device)
-                print(content_t.shape, generated_t.shape)
 
                 # generated_t.data.clamp_(0, 1)    # should we clamp? Tut does, example doesn't
                 # generated_t1.data.clamp_(0, 1)
@@ -178,7 +164,6 @@ def train_stylization_network(style_img, num_steps=200,
                 # total content loss (section 3.2.1)
                 total_content_loss = content_loss_t + content_loss_t1
                 total_content_loss *= content_weight
-                print("content loss", total_content_loss)
 
                 # calculate style losses for current and previous frame
                 style_image_activations = spatial_loss_network(style_img)
@@ -192,12 +177,10 @@ def train_stylization_network(style_img, num_steps=200,
                 # total style loss (section 3.2.1)
                 total_style_loss = style_loss_t + style_loss_t1
                 total_style_loss *= style_weight
-                print("style loss", total_style_loss)
 
                 # regularization (TV Regularizer, section 3.2.1)
                 tv_loss = tv(generated_t_style_activations[3]).to(device) #???
                 tv_loss *= variation_weight
-                print("tv loss", tv_loss)
 
                 # final spatial loss
                 spatial_loss = total_style_loss + total_content_loss + tv_loss
@@ -220,29 +203,25 @@ def train_stylization_network(style_img, num_steps=200,
                 # Hybrid loss and backprop
                 # hybrid_loss = spatial_loss + temporal_loss
 
-                print("Spatial loss is: ", spatial_loss)
                 hybrid_loss = spatial_loss
 
                 # clears gradients for each iteration of backprop
                 optimizer.zero_grad()
+
                 # calculate gradients for backprop
                 hybrid_loss.backward(retain_graph=True)
-
-                print("Backprop")
 
                 # optimize parameters of stylization network from backprop
                 optimizer.step()
 
-                print("Optimizer stepped")
-
                 steps_completed += 1
                 if steps_completed % 50 == 0:
                     print("Step {}:".format(steps_completed))
-                    print('Style Loss : {:4f} Content Loss: {:4f} Temporal Loss: {:4f}'.format(
-                        total_style_loss.item(), total_content_loss.item(), temporal_loss.item()))
+                    print('Style Loss : {:4f} Content Loss: {:6f} TV Loss: {:4f}'.format(
+                        total_style_loss.item(), total_content_loss.item(), tv_loss.item()))
                     print()
 
-            saveModel()
+            saveModel(stylization_network)
         # save the model parameters after training
         # torch.save(stylization_network.state_dict(), model_path)
 

@@ -28,9 +28,6 @@ class Normalization(nn.Module):
         self.std = torch.tensor(std).view(-1, 1, 1)
 
     def forward(self, content_activation, generated_activation):
-        print("norm forward")
-
-        # normalize img
         return (generated_activation - self.mean) / self.std
 
 class ContentLoss(nn.Module):
@@ -46,10 +43,6 @@ class ContentLoss(nn.Module):
 
     def forward(self, content_activation, generated_activation):
         # inputs are the respective feature maps at ReLU_10 (final loss layer)
-        print("content forward")
-        if(content_activation.shape != generated_activation.shape):
-            print(content_activation.shape, generated_activation.shape)
-
         b, c, h, w = content_activation.shape
 
         return (1 /(c * h * w)) * torch.mean((content_activation - generated_activation) ** 2)
@@ -79,7 +72,6 @@ class StyleLoss(nn.Module):
         self.loss = loss
 
     def forward(self, style_activation, generated_activation):
-        print("style forward")
         style_gram = gram_matrix(style_activation)
         generated_gram = gram_matrix(generated_activation)
 
@@ -93,21 +85,11 @@ class TVLoss(nn.Module):
         self.device = device
 
     def forward(self, generated_activation): #calculates overall pixel smoothness for handling checkerboard artifacts
-        print("tv forward")
-
-        b, c, h, w = generated_activation.shape
-
-        sum = 0
-        for i_c in range(c):
-            for i_h in range(h-1):
-                for i_w in range(w-1):
-                    sum += (generated_activation[0][i_c][i_h][i_w+1] - generated_activation[0][i_c][i_h][i_w]) ** 2
-                    sum += (generated_activation[0][i_c][i_h+1][i_w] - generated_activation[0][i_c][i_h][i_w]) ** 2
-
-        return sum ** 0.5
+        # source:  https://towardsdatascience.com/pytorch-implementation-of-perceptual-losses-for-real-time-style-transfer-8d608e2e9902
+        return torch.sum(torch.abs(generated_activation[:, :, :, :-1] - generated_activation[:, :, :, 1:])) + torch.sum(torch.abs(generated_activation[:, :, :-1, :] - generated_activation[:, :, 1:, :]))
 
 
-class TemporalLoss(nn.Module): # TODO: Rename variables
+class TemporalLoss(nn.Module):
     """
     computes loss between consecutive generated frame
     generated_t: frame t
@@ -119,8 +101,6 @@ class TemporalLoss(nn.Module): # TODO: Rename variables
         self.device = device
 
     def forward(self, generated_t, flow_t1, mask):
-        print("temporal forward")
-
         assert generated_t.shape == flow_t1, "inputs are not the same"
         generated_t = generated_t.view(1, -1).to(device)
         flow_t1 = flow_t1.view(1, -1).to(device)
@@ -135,8 +115,6 @@ class TemporalLoss(nn.Module): # TODO: Rename variables
 # desired depth layers to compute style/content losses :
 # content_layers_default = ['relu_10']
 # style_layers_default = ['relu_2', 'relu_4', 'relu_6', 'relu_10']
-
-# vgg = models.vgg19(pretrained=True).features.to(device).eval()
 
 vgg_normalization_mean = torch.tensor([0.485, 0.456, 0.406]).to(device)
 vgg_normalization_std = torch.tensor([0.229, 0.224, 0.225]).to(device)
