@@ -13,7 +13,9 @@ class Dataset(data.Dataset):
     def __init__(self, data_path, transformImg):
         self.data_path = data_path
         self.transformImg = transformImg
-        self.video_list = os.listdir(data_path)
+        self.video_list = [file for file in os.listdir(data_path) if file[0] != "."]
+        self.video_list.sort()
+        print(self.video_list)
 
     def __getitem__(self, i):
         video = cv2.VideoCapture(os.path.join(self.data_path, self.video_list[i]))
@@ -25,7 +27,8 @@ class Dataset(data.Dataset):
         while (video.isOpened()):
             ret, frame = video.read()
 
-            if (ret):
+            # videos are 24 fps. Stop the frames at 240 to get 10 seconds of each
+            if (ret and framecount < 240):
                 framecount += 1
                 print("frame ", framecount)
 

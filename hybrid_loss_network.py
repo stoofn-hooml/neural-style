@@ -64,7 +64,7 @@ def gram_matrix(input):
 
     # we 'normalize' the values of the gram matrix
     # by dividing by the number of element in each feature maps.
-    return G.div(a * b * c * d)
+    return G.div(a * b * c * d).cuda()
 
 
 class StyleLoss(nn.Module):
@@ -88,8 +88,9 @@ class StyleLoss(nn.Module):
 
 class TVLoss(nn.Module):
     """ TV regularization factor for spatial loss (Huang section 3.2.1) """
-    def __init__(self):
+    def __init__(self, device):
         super(TVLoss, self).__init__()
+        self.device = device
 
     def forward(self, generated_activation): #calculates overall pixel smoothness for handling checkerboard artifacts
         print("tv forward")
@@ -113,16 +114,17 @@ class TemporalLoss(nn.Module): # TODO: Rename variables
     flow_t1: optical flow(frame t-1)
     mask: confidence mask of optical flow
     """
-    def __init__(self):
+    def __init__(self, device):
         super(TemporalLoss, self).__init__()
+        self.device = device
 
     def forward(self, generated_t, flow_t1, mask):
         print("temporal forward")
 
         assert generated_t.shape == flow_t1, "inputs are not the same"
-        generated_t = generated_t.view(1, -1)
-        flow_t1 = flow_t1.view(1, -1)
-        mask = mask.view(-1)
+        generated_t = generated_t.view(1, -1).to(device)
+        flow_t1 = flow_t1.view(1, -1).to(device)
+        mask = mask.view(-1).to(device)
 
         D = flow_t1.shape[1]
         return (1 / D) * mask * generated_t, flow_t1
@@ -134,22 +136,23 @@ class TemporalLoss(nn.Module): # TODO: Rename variables
 # content_layers_default = ['relu_10']
 # style_layers_default = ['relu_2', 'relu_4', 'relu_6', 'relu_10']
 
-vgg = models.vgg19(pretrained=True).features.to(device).eval()
+# vgg = models.vgg19(pretrained=True).features.to(device).eval()
 
 vgg_normalization_mean = torch.tensor([0.485, 0.456, 0.406]).to(device)
 vgg_normalization_std = torch.tensor([0.229, 0.224, 0.225]).to(device)
 
 class SpatialLossNetwork(nn.Module):
     #https://discuss.pytorch.org/t/accessing-intermediate-layers-of-a-pretrained-network-forward/12113/2
-    def __init__(self):
+    def __init__(self, device):
         super(SpatialLossNetwork, self).__init__()
         features = list(models.vgg19(pretrained=True).features.to(device))[:23]
-        self.features = nn.ModuleList(features).eval()
+        self.features = nn.ModuleList(features).eval().to(device)
+        self.device = device
 
     def forward(self, x):
         results = []
         for ii,model in enumerate(self.features):
-            x = model(x)
+            x = model(x).to(self.device)
             # indices of style layers (found in section 3.2.1)
             if ii in {3, 8, 13, 22}:
                 results.append(x)
