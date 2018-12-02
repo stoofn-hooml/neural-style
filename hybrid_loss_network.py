@@ -5,6 +5,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
+# from warp import warp_image
+
 from PIL import Image
 import matplotlib.pyplot as plt
 
@@ -33,19 +35,17 @@ class Normalization(nn.Module):
 class ContentLoss(nn.Module):
     """ computes loss between content image and generated using MSE for spatial loss"""
 
-    def __init__(self, gpu):
+    def __init__(self, device):
         super(ContentLoss, self).__init__()
-        if gpu:
-            loss = nn.MSELoss().cuda()
-        else:
-            loss = nn.MSELoss()
-        self.loss = loss
+        self.loss = nn.MSELoss().to(device)
 
     def forward(self, content_activation, generated_activation):
         # inputs are the respective feature maps at ReLU_10 (final loss layer)
         b, c, h, w = content_activation.shape
+        return (1/(c*h*w) * self.loss(content_activation, generated_activation))
 
-        return (1 /(c * h * w)) * torch.mean((content_activation - generated_activation) ** 2)
+        # why not use MSE?
+        # return (1 /(c * h * w)) * torch.mean((content_activation - generated_activation) ** 2)
 
 def gram_matrix(input):
     a, b, c, d = input.size()  # a=batch size(=1)
@@ -63,20 +63,18 @@ def gram_matrix(input):
 class StyleLoss(nn.Module):
     """ computes loss between style image and generated image using Gram matrix for spatial loss """
 
-    def __init__(self, gpu):
+    def __init__(self, device):
         super(StyleLoss, self).__init__()
-        if gpu:
-            loss = nn.MSELoss().cuda()
-        else:
-            loss = nn.MSELoss()
-        self.loss = loss
+        self.loss = nn.MSELoss().to(device)
 
     def forward(self, style_activation, generated_activation):
         style_gram = gram_matrix(style_activation)
         generated_gram = gram_matrix(generated_activation)
 
         num_channels = generated_activation.shape[3]
-        return (1 / num_channels ** 2) * self.loss(generated_gram, style_gram)
+        # print("Num_channels", num_channels)
+        # print(style_gram, generated_gram)
+        return (1 / num_channels ** 2) * self.loss(style_gram, generated_gram)
 
 class TVLoss(nn.Module):
     """ TV regularization factor for spatial loss (Huang section 3.2.1) """
@@ -98,16 +96,25 @@ class TemporalLoss(nn.Module):
     """
     def __init__(self, device):
         super(TemporalLoss, self).__init__()
-        self.device = device
+        # self.device = device
+        self.loss = nn.MSELoss().to(device)
 
-    def forward(self, generated_t, flow_t1, mask):
-        assert generated_t.shape == flow_t1, "inputs are not the same"
-        generated_t = generated_t.view(1, -1).to(device)
-        flow_t1 = flow_t1.view(1, -1).to(device)
-        mask = mask.view(-1).to(device)
+    def forward(self, generated_t, generated_t1, flow_t1, mask):
+        print(generated_t.shape, flow_t1.shape, mask.shape)
+        # assert generated_t.shape == flow_t1.shape, "inputs are not the same"
+        # generated_t_reshaped = generated_t.squeeze(0).permute(1, 2, 0)
+        # flow_t1 = flow_t1.view(1, -1)
+        # mask = mask.view(-1)
 
-        D = flow_t1.shape[1]
-        return (1 / D) * mask * generated_t, flow_t1
+        # .squeeze(0).permute(1, 2, 0)
+
+        print(generated_t_reshaped.shape, flow_t1.shape)
+
+        b, c, h, w = generated_t.shape
+        D = h * w * c
+        warped = nn.grid_sample(generated_t1, )
+        # D = flow_t1.shape[1]
+        return ((1 / D) * mask * self.loss(generated_t, warp_image(generated_t1, flow_t1)))
 
 
 """ Defaults for hybrid loss network """

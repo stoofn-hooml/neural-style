@@ -26,7 +26,8 @@ class Dataset(data.Dataset):
             ret, frame = video.read()
 
             # videos are 24 fps. Stop the frames at 240 to get 10 seconds of each
-            if (ret and framecount < 240):
+            # and framecount < 240
+            if (ret):
                 framecount += 1
                 # print("frame ", framecount)
 
@@ -35,7 +36,7 @@ class Dataset(data.Dataset):
 
                 # resize, convert to tensor, add dimension, put on GPU if available
                 # rgb_frame = self.transformImg(rgb_frame)
-                transformed_frame = self.transformImg(pil_frame, False)
+                transformed_frame = self.transformImg(pil_frame, style=False, normalize=True)
                 frames.append(transformed_frame)
             else:
                 video.release()
