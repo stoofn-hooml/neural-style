@@ -60,7 +60,7 @@ if (torch.cuda.is_available()):
     print(torch.cuda.get_device_name(torch.cuda.current_device()))
 else:
     print("CPU")
-    print(device = torch.device("cpu"))
+    device = torch.device("cpu")
 
 # use shape instead of size so we can be sure that content frames will be the same
 # img_shape = (360, 640) if torch.cuda.is_available() else (72, 128)
@@ -69,8 +69,13 @@ print(img_shape)
 
 transform = transforms.Compose([
     transforms.Resize(img_shape),  # scale imported image
-    transforms.ToTensor(),
-    transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))])  # transform it into a torch tensor
+    transforms.ToTensor()])  # transform it into a torch tensor
+
+def normalizeTensor(tensor):
+    # normalize using imagenet mean and std
+    mean = tensor.new_tensor([0.485, 0.456, 0.406]).view(-1, 1, 1)
+    std = tensor.new_tensor([0.229, 0.224, 0.225]).view(-1, 1, 1)
+    return (tensor - mean) / std
 
 # normalizeImg = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
 
@@ -89,6 +94,8 @@ style_img = transformImg(Image.open("./images/starry.jpg"), style=True, normaliz
 content_path = './content_videos'
 unloader = transforms.ToPILImage()  # reconvert into PIL image
 
+# plt.ion()
+
 def imshow(tensor, title=None):
     image = tensor.cpu().clone()  # we clone the tensor to not do changes on it
     image = image.squeeze(0)      # remove the fake batch dimension
@@ -98,12 +105,16 @@ def imshow(tensor, title=None):
         plt.title(title)
     plt.pause(0.001)  # pause a bit so that plots are update
 
+# plt.figure()
+# imshow(style_img)
+
 
 model_save_path = "./models/model" + str(datetime.datetime.now()).strip('/') + ".pth"
 model_load_path = "./models/model.pth"
+
 load_model = True
 
-use_temporal_loss = True
+use_temporal_loss = False
 
 # hyperperameter defaults (specified in section 4.1)
 default_content_weight = 1
@@ -115,9 +126,17 @@ default_epochs = 2
 
 # style_loss_layers = [1]
 
-def saveModel(stylization_network):
+def saveModel(stylization_network, optimizer, steps_completed):
+    # save the state dict in evaluation mode
+    stylization_network.eval()
     print("Saving model to:", model_save_path)
-    torch.save(stylization_network.state_dict(), model_save_path)
+    torch.save({
+        'frames': steps_completed,
+        'model_state_dict': stylization_network.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict()
+        }, model_save_path)
+    # return the model to training mode
+    stylization_network.to(device).train()
 
 
 def train_stylization_network(style_img, epochs=default_epochs,
@@ -130,10 +149,18 @@ def train_stylization_network(style_img, epochs=default_epochs,
 
     # initialize starting values/networks
     stylization_network = StylizationNetwork().to(device)
+    # using default learning rate 0.001
+    optimizer = optim.Adam(stylization_network.parameters())
+
+    previous_steps = 0
     if (load_model):
         print("Loading: ", model_load_path)
-        stylization_network.load_state_dict(torch.load(model_load_path))
+        checkpoint = torch.load(model_load_path, map_location='cpu')
+        stylization_network.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        previous_steps = checkpoint['frames']
 
+    # initialize spatial loss network and hybrid loss modules
     spatial_loss_network = SpatialLossNetwork(device).to(device)
 
     content_loss = ContentLoss(device).to(device)
@@ -141,17 +168,16 @@ def train_stylization_network(style_img, epochs=default_epochs,
     tv = TVLoss(device).to(device)
     temporal = TemporalLoss(device).to(device)
 
-    # using default learning rate 0.001
-    optimizer = optim.Adam(stylization_network.parameters())
 
-    print('Optimizing...')
-    steps_completed = 0
+    print('Training...')
+    steps_completed = previous_steps
 
     # get loader of video
     video_loader = get_loader(1, content_path, transformImg)
 
     for epoch in range(epochs):
         print("Epoch: ", epoch)
+        stylization_network.train()
 
         # video_loader is an iterator so it must be accessed with enumerate()
         # each element of enumerate(video_loader) is a list of frames (a video)
@@ -159,13 +185,20 @@ def train_stylization_network(style_img, epochs=default_epochs,
             print("Video", j)
             # loop through all the frames for each video
             for i in range(1, len(frames)):
-                # print("Frame", i)
+                # clears gradients for each iteration of backprop
+                optimizer.zero_grad()
 
                 content_t = frames[i];      # current frame
                 content_t1 = frames[i-1];   # previous frame
+                # imshow(content_t)
 
                 generated_t = stylization_network(content_t).to(device)
                 generated_t1 = stylization_network(content_t1).to(device)
+
+                content_t = normalizeTensor(content_t)
+                content_t1 = normalizeTensor(content_t1)
+                generated_t = normalizeTensor(generated_t)
+                generated_t1 = normalizeTensor(generated_t1)
 
                 # don't clamp! Then it's not the output of the stylization network being optimized
                 # generated_t.data.clamp_(0, 1)    # should we clamp? Tut does, example doesn't
@@ -219,11 +252,8 @@ def train_stylization_network(style_img, epochs=default_epochs,
                 else:
                     hybrid_loss = spatial_loss
 
-                # clears gradients for each iteration of backprop
-                optimizer.zero_grad()
-
                 # calculate gradients for backprop
-                hybrid_loss.backward(retain_graph=True)
+                hybrid_loss.backward()
 
                 # optimize parameters of stylization network from backprop
                 optimizer.step()
@@ -235,7 +265,7 @@ def train_stylization_network(style_img, epochs=default_epochs,
                         total_style_loss.item(), total_content_loss.item(), tv_loss.item()))
                     print()
 
-            saveModel(stylization_network)
+            saveModel(stylization_network, optimizer, steps_completed)
         # save the model parameters after training
         # torch.save(stylization_network.state_dict(), model_path)
 

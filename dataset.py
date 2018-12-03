@@ -27,7 +27,7 @@ class Dataset(data.Dataset):
 
             # videos are 24 fps. Stop the frames at 240 to get 10 seconds of each
             # and framecount < 240
-            if (ret):
+            if (ret or framecount < 2):
                 framecount += 1
                 # print("frame ", framecount)
 
