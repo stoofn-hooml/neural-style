@@ -18,7 +18,7 @@ video_path = './videos_to_stylize/29_34.mp4'
 video = cv2.VideoCapture(video_path)
 
 # https://stackoverflow.com/questions/42703500/best-way-to-save-a-trained-model-in-pytorch
-model_path = "./models/model_11.pth"
+model_path = "./models/model.pth"
 stylization_network = StylizationNetwork()
 #
 checkpoint = torch.load(model_path, map_location='cpu')
@@ -56,15 +56,21 @@ while(True):
     pil_frame = Image.fromarray(rgb_frame)
 
     transformed_frame = transformImg(pil_frame, style=True)
-    imshow(transformed_frame)
+    # print(transformed_frame)
+    # imshow(transformed_frame)
 
     # Other guy
     # transformed_frame = scaleTensor(transformed_frame)
 
-    stylized_frame = stylization_network(transformed_frame).cpu()
+    stylized_frame = stylization_network(transformed_frame)
+
+    # stylized_frame = stylized_frame.clamp(0, 1)
+    # print(stylized_frame)
+
 
     # stylized_frame = stylized_frame[0].detach().clamp(0, 255).numpy()
     # stylized_frame = stylized_frame.transpose(1, 2, 0).astype("uint8")
+    # print(stylized_frame)
     # cv2.imshow("Stylized", stylized_frame)
 
     # print(stylized_frame)

@@ -69,13 +69,15 @@ print(img_shape)
 
 transform = transforms.Compose([
     transforms.Resize(img_shape),  # scale imported image
-    transforms.ToTensor()])  # transform it into a torch tensor
+    transforms.ToTensor(),
+    transforms.Lambda(lambda x: x.mul(255))])  # transform it into a torch tensor
 
 def normalizeTensor(tensor):
     # normalize using imagenet mean and std
     mean = tensor.new_tensor([0.485, 0.456, 0.406]).view(-1, 1, 1)
     std = tensor.new_tensor([0.229, 0.224, 0.225]).view(-1, 1, 1)
-    return (tensor - mean) / std
+    small_tensor = tensor.clone().div_(255.0)
+    return (small_tensor - mean) / std
 
 # normalizeImg = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
 
@@ -168,6 +170,7 @@ def train_stylization_network(style_img, epochs=default_epochs,
     tv = TVLoss(device).to(device)
     temporal = TemporalLoss(device).to(device)
 
+    # calculate style activations
 
     print('Training...')
     steps_completed = previous_steps
@@ -189,16 +192,16 @@ def train_stylization_network(style_img, epochs=default_epochs,
                 optimizer.zero_grad()
 
                 content_t = frames[i];      # current frame
-                content_t1 = frames[i-1];   # previous frame
+                # content_t1 = frames[i-1];   # previous frame
                 # imshow(content_t)
 
                 generated_t = stylization_network(content_t).to(device)
-                generated_t1 = stylization_network(content_t1).to(device)
+                # generated_t1 = stylization_network(content_t1).to(device)
 
                 content_t = normalizeTensor(content_t)
-                content_t1 = normalizeTensor(content_t1)
+                # content_t1 = normalizeTensor(content_t1)
                 generated_t = normalizeTensor(generated_t)
-                generated_t1 = normalizeTensor(generated_t1)
+                # generated_t1 = normalizeTensor(generated_t1)
 
                 # don't clamp! Then it's not the output of the stylization network being optimized
                 # generated_t.data.clamp_(0, 1)    # should we clamp? Tut does, example doesn't
@@ -206,51 +209,55 @@ def train_stylization_network(style_img, epochs=default_epochs,
 
                 # calculate content losses for current and previous frame
                 content_t_style_activations = spatial_loss_network(content_t)
-                content_t1_style_activations = spatial_loss_network(content_t1)
+                # content_t1_style_activations = spatial_loss_network(content_t1)
                 generated_t_style_activations = spatial_loss_network(generated_t)
-                generated_t1_style_activations = spatial_loss_network(generated_t1)
+                # generated_t1_style_activations = spatial_loss_network(generated_t1)
 
                 # [3] = last of the returned activation maps
                 content_loss_t = content_loss(content_t_style_activations[3], generated_t_style_activations[3]).to(device)
-                content_loss_t1 = content_loss(content_t1_style_activations[3], generated_t1_style_activations[3]).to(device)
+                # content_loss_t1 = content_loss(content_t1_style_activations[3], generated_t1_style_activations[3]).to(device)
 
                 # total content loss (section 3.2.1)
-                total_content_loss = content_loss_t + content_loss_t1
+                # total_content_loss = (content_loss_t + content_loss_t1) * content_weight
+                total_content_loss = content_loss_t
                 total_content_loss *= content_weight
 
-                # calculate style losses for current and previous frame
-                style_image_activations = spatial_loss_network(style_img)
+                style_image_activations = spatial_loss_network(normalizeTensor(style_img))
 
                 style_loss_t = 0
-                style_loss_t1 = 0
+                # style_loss_t1 = 0
                 for i in range(len(style_image_activations)):
                     style_loss_t += style_loss(style_image_activations[i], generated_t_style_activations[i]).to(device)
-                    style_loss_t1 += style_loss(style_image_activations[i], generated_t1_style_activations[i]).to(device)
+                    # style_loss_t1 += style_loss(style_image_activations[i], generated_t1_style_activations[i]).to(device)
 
                 # total style loss (section 3.2.1)
-                total_style_loss = style_loss_t + style_loss_t1
+                # total_style_loss = (style_loss_t + style_loss_t1) * style_weight
+                total_style_loss = style_loss_t
                 total_style_loss *= style_weight
 
                 # regularization (TV Regularizer, section 3.2.1)
-                tv_loss = tv(generated_t_style_activations[3]).to(device) #???
-                tv_loss *= variation_weight
+                # tv_loss = tv(generated_t_style_activations[3]).to(device) #???
+                # tv_loss *= variation_weight
+                # tv_loss = 0
 
                 # final spatial loss
-                spatial_loss = total_style_loss + total_content_loss + tv_loss
+                # spatial_loss = total_style_loss + total_content_loss + tv_loss
+                spatial_loss = total_style_loss + total_content_loss
+
 
                 # Optical flow (Temporal Loss, section 3.2.2)
                 # .squeeze(0).permute(1, 2, 0)
-                if use_temporal_loss:
-                    optical_t = generated_t.squeeze(0).permute(1, 2, 0).cpu().data.numpy()
-                    optical_t1 = generated_t1.squeeze(0).permute(1, 2, 0).cpu().data.numpy()
-                    flow_t1, mask = opticalflow(optical_t, optical_t1)
-
-                    temporal_loss = temporal(generated_t, generated_t1, flow_t1, mask)
-                    temporal_loss *= temporal_weight
-
-                    hybrid_loss = spatial_loss + temporal_loss
-                else:
-                    hybrid_loss = spatial_loss
+                # if use_temporal_loss:
+                #     optical_t = generated_t.squeeze(0).permute(1, 2, 0).cpu().data.numpy()
+                #     optical_t1 = generated_t1.squeeze(0).permute(1, 2, 0).cpu().data.numpy()
+                #     flow_t1, mask = opticalflow(optical_t, optical_t1)
+                #
+                #     temporal_loss = temporal(generated_t, generated_t1, flow_t1, mask)
+                #     temporal_loss *= temporal_weight
+                #
+                #     hybrid_loss = spatial_loss + temporal_loss
+                # else:
+                hybrid_loss = spatial_loss
 
                 # calculate gradients for backprop
                 hybrid_loss.backward()
@@ -261,8 +268,8 @@ def train_stylization_network(style_img, epochs=default_epochs,
                 steps_completed += 1
                 if steps_completed % 50 == 0:
                     print("Frames completed {}:".format(steps_completed))
-                    print('Hybrid loss: {:4f}\nStyle Loss : {:4f} Content Loss: {:8f} TV Loss: {:4f}'.format(hybrid_loss.item(),
-                        total_style_loss.item(), total_content_loss.item(), tv_loss.item()))
+                    print('Hybrid loss: {:4f}\nStyle Loss : {:4f} Content Loss: {:8f}'.format(hybrid_loss.item(),
+                        total_style_loss.item(), total_content_loss.item())) #   TV Loss: {:4f} tv_loss.item()
                     print()
 
             saveModel(stylization_network, optimizer, steps_completed)
