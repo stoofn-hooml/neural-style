@@ -104,7 +104,7 @@ use_temporal_loss = False
 
 # hyperperameter defaults (specified in section 4.1)
 default_content_weight = 1
-default_style_weight = 1000
+default_style_weight = 10
 default_temporal_weight = 10000
 default_variation_weight = .001
 
@@ -237,8 +237,8 @@ def train_stylization_network(style_img, epochs=default_epochs,
                 steps_completed += 1
                 if steps_completed % 50 == 0:
                     print("Frames completed {}:".format(steps_completed))
-                    print('Hybrid loss: {:4f}\nStyle Loss : {:4f} Content Loss: {:8f}'.format(hybrid_loss.item(),
-                        total_style_loss.item(), total_content_loss.item())) #   TV Loss: {:4f} tv_loss.item()
+                    print('Hybrid loss: {:4f}\nStyle Loss: {:4f} Content Loss: {:8f}\nTV Loss: {:4f}'.format(hybrid_loss.item(),
+                        total_style_loss.item(), total_content_loss.item(), tv_loss.item())) #
                     print()
 
             # save the model parameters after training for each video
