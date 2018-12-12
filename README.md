@@ -29,7 +29,7 @@ The script will display the result of stylizing each frame of the input video on
 # Multi-style
 This is a neural style transfer system that allows _style videos_. It takes as input a content video and style video and generates an output video with a dynamic style. To stylize each frame, it uses the neural-style.lua script created by Johnson et al., found from [this repository](https://github.com/jcjohnson/neural-style).
 
-<img src="multi-style/example_outputs/lion/lionloop.gif" width="550">
+<img src="multi-style/example_outputs/lionloop.gif" width="550">
 
 ## Dependencies
 The script is written in Python. It requires [Pytorch](https://pytorch.org/), as well as the python packages PIL, plt, and cv2. It calls Johnson's stylization script internally, which requires [torch7](https://github.com/torch/torch7) and [loadcaffe](https://github.com/szagoruyko/loadcaffe).
