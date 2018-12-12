@@ -3,7 +3,7 @@
 This repository contains two separate systems for neural style transfer: real-time-style and multi-style. The dependencies and instructions for each are detailed below.
 
 # Real-time-style
-This system performs neural style transfer for videos in real-time using a pre-trained feedforward convolutional neural network. The architecture is based on the paper ["Real-Time Neural Style Transfer for Videos"](http://openaccess.thecvf.com/content_cvpr_2017/papers/Huang_Real-Time_Neural_Style_CVPR_2017_paper.pdf) by Huang et al. It is built train a model that will stylize arbitrary content based on a single style image.
+This system performs neural style transfer for videos in real-time using a pre-trained feedforward convolutional neural network. The architecture is based on the paper ["Real-Time Neural Style Transfer for Videos"](http://openaccess.thecvf.com/content_cvpr_2017/papers/Huang_Real-Time_Neural_Style_CVPR_2017_paper.pdf) by Huang et al. It is built to train a model that will stylize arbitrary content based on a single style image.
 
 ## Dependencies
 The system was written in Python, and it uses the  [Pytorch](https://pytorch.org/) library for deep learning. Additionally, it requires several python packages that can be installed via pip: torchvision, PIL, matplotlib, and cv2.
@@ -29,7 +29,7 @@ The script will display the result of stylizing each frame of the input video on
 # Multi-style
 This is a neural style transfer system that allows _style videos_. It takes as input a content video and style video and generates an output video with a dynamic style. To stylize each frame, it uses the neural-style.lua script created by Johnson et al., found from [this repository](https://github.com/jcjohnson/neural-style).
 
-<img "multi-style/example_outputs/lion/lionloop.gif" width="550">
+<img src="multi-style/example_outputs/lion/lionloop.gif" width="550">
 
 ## Dependencies
 The script is written in Python. It requires [Pytorch](https://pytorch.org/), as well as the python packages PIL, plt, and cv2. It calls Johnson's stylization script internally, which requires [torch7](https://github.com/torch/torch7) and [loadcaffe](https://github.com/szagoruyko/loadcaffe).
@@ -44,4 +44,4 @@ Set the desired paths for `content_video` and `style_video` at the top of `multi
 ```
 python3 multi_style_transfer.py
 ```
-In an output folder labeled with the current date time, the program will output the content frames, style frames, resulting stylized frames, and final stylized video.
+In an output folder labeled with the current date and time, the program will output the content frames, style frames, resulting stylized frames, and final stylized video.
